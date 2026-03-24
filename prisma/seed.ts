@@ -21,28 +21,39 @@ async function main() {
     const hashedPassword = await bcrypt.hash('123456', 10);
 
     await prisma.$transaction(async (tx) => {
-      // 1. create Tenant
-      const tenant = await tx.tenant.upsert({
+      // 1. create Tenants
+      const tenant1 = await tx.tenant.upsert({
         where: { code: 'TEST001' },
+        create: { name: 'Hospital A', code: 'TEST001', type: 'hospital' },
+        update: { name: 'Hospital A', type: 'hospital' },
+      });
+      const tenant2 = await tx.tenant.upsert({
+        where: { code: 'TEST002' },
+        create: { name: 'Hospital B', code: 'TEST002', type: 'hospital' },
+        update: { name: 'Hospital B', type: 'hospital' },
+      });
+
+      // 2. create Admins
+      const adminA = await tx.user.upsert({
+        where: { email: 'adminA@test.com' },
         create: {
-          name: 'Test Hospital',
-          code: 'TEST001',
-          type: 'hospital',
+          email: 'adminA@test.com',
+          password: hashedPassword,
+          role: Role.PLATFORM_ADMIN,
+          tenantId: tenant1.id,
         },
         update: {
-          name: 'Test Hospital',
-          type: 'hospital',
+          role: Role.PLATFORM_ADMIN,
         },
       });
 
-      // 2. create Admin
-      const admin = await tx.user.upsert({
-        where: { email: 'admin@test.com' },
+      const adminB = await tx.user.upsert({
+        where: { email: 'adminB@test.com' },
         create: {
-          email: 'admin@test.com',
+          email: 'adminB@test.com',
           password: hashedPassword,
           role: Role.PLATFORM_ADMIN,
-          tenantId: tenant.id,
+          tenantId: tenant2.id,
         },
         update: {
           role: Role.PLATFORM_ADMIN,
@@ -56,17 +67,60 @@ async function main() {
           email: 'doctor@test.com',
           password: hashedPassword,
           role: Role.DOCTOR,
-          tenantId: tenant.id,
+          tenantId: tenant1.id,
         },
         update: {
           role: Role.DOCTOR,
         },
       });
-
+      // 4. create Patient (Tenant A and B)
+      // Tenant A
+      const patientA = await tx.user.upsert({
+        where: { email: 'patientA@test.com' },
+        create: {
+          email: 'patientA@test.com',
+          password: hashedPassword,
+          role: Role.PATIENT,
+          tenantId: tenant1.id,
+        },
+        update: {
+          role: Role.PATIENT,
+        },
+      });
+      // Tenant B
+      const patientB = await tx.user.upsert({
+        where: { email: 'patientB@test.com' },
+        create: {
+          email: 'patientB@test.com',
+          password: hashedPassword,
+          role: Role.PATIENT,
+          tenantId: tenant2.id,
+        },
+        update: {
+          role: Role.PATIENT,
+        },
+      });
+      // 5. create Nurse
+      const nurse = await tx.user.upsert({
+        where: { email: 'nurse@test.com' },
+        create: {
+          email: 'nurse@test.com',
+          password: hashedPassword,
+          role: Role.NURSE,
+          tenantId: tenant1.id,
+        },
+        update: {
+          role: Role.NURSE,
+        },
+      });
       // ✅ Clean logs
-      console.log('Tenant:', tenant.id, tenant.code);
-      console.log('Admin:', admin.email, '| Role:', admin.role);
+      console.log('Tenant:', tenant1.id, tenant1.code);
+      console.log('Admin:', adminA.email, '| Role:', adminA.role);
+      console.log('Admin:', adminB.email, '| Role:', adminB.role);
       console.log('Doctor:', doctor.email, '| Role:', doctor.role);
+      console.log('Patient:', patientA.email, '| Role:', patientA.role);
+      console.log('Patient:', patientB.email, '| Role:', patientB.role);
+      console.log('Nurse:', nurse.email, '| Role:', nurse.role);
     });
 
     console.log('Seeding completed ✅');
