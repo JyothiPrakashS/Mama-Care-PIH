@@ -26,4 +26,11 @@ export class AuthController {
   doctorOnly() {
     return 'Doctor access granted';
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('PLATFORM_ADMIN')
+  @Get('admin-only')
+  adminOnly() {
+    return 'Admin access granted';
+  }
 }

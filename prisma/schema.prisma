@@ -20,6 +20,7 @@ model Tenant {
   type      String
   createdAt DateTime @default(now())
   users     User[]
+  patients  Patient[]
 }
 
 model User {
@@ -31,4 +32,21 @@ model User {
   role      Role
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
+}
+
+model Patient {
+  id          String   @id @default(uuid())
+  name        String
+  age         Int
+  phone       String
+  address     String?
+  medicalNote String?
+
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   String   // userId (doctor/admin)
 }
