@@ -49,4 +49,8 @@ model Patient {
   updatedAt   DateTime @updatedAt
 
   createdBy   String   // userId (doctor/admin)
+
+   // ✅ Soft delete fields
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
 }
