@@ -4,14 +4,15 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { RegisterPatientDto } from '../patient/dto/register-patient.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(private auth: AuthService) { }
 
   @Post('login')
-  login(@Body() body: { email: string; password: string }) {
-    return this.auth.login(body.email, body.password);
+  login(@Body() body: { email?: string; phone?: string; password: string }) {
+    return this.auth.login(body.email ?? body.phone ?? '', body.password);
   }
 
   @Get('profile')
@@ -32,5 +33,10 @@ export class AuthController {
   @Get('admin-only')
   adminOnly() {
     return 'Admin access granted';
+  }
+
+  @Post('register-patient')
+  registerPatient(@Body() dto: RegisterPatientDto) {
+    return this.auth.registerPatient(dto);
   }
 }

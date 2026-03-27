@@ -24,12 +24,22 @@ async function main() {
       // 1. create Tenants
       const tenant1 = await tx.tenant.upsert({
         where: { code: 'TEST001' },
-        create: { name: 'Hospital A', code: 'TEST001', type: 'hospital' },
+        create: {
+          name: 'Hospital A',
+          inviteCode: 'INV-TEST001',
+          code: 'TEST001',
+          type: 'hospital',
+        },
         update: { name: 'Hospital A', type: 'hospital' },
       });
       const tenant2 = await tx.tenant.upsert({
         where: { code: 'TEST002' },
-        create: { name: 'Hospital B', code: 'TEST002', type: 'hospital' },
+        create: {
+          name: 'Hospital B',
+          inviteCode: 'INV-TEST002',
+          code: 'TEST002',
+          type: 'hospital',
+        },
         update: { name: 'Hospital B', type: 'hospital' },
       });
 
@@ -38,6 +48,7 @@ async function main() {
         where: { email: 'adminA@test.com' },
         create: {
           email: 'adminA@test.com',
+          phone: '9000000001',
           password: hashedPassword,
           role: Role.PLATFORM_ADMIN,
           tenantId: tenant1.id,
@@ -51,6 +62,7 @@ async function main() {
         where: { email: 'adminB@test.com' },
         create: {
           email: 'adminB@test.com',
+          phone: '9000000002',
           password: hashedPassword,
           role: Role.PLATFORM_ADMIN,
           tenantId: tenant2.id,
@@ -65,6 +77,7 @@ async function main() {
         where: { email: 'doctor@test.com' },
         create: {
           email: 'doctor@test.com',
+          phone: '9000000003',
           password: hashedPassword,
           role: Role.DOCTOR,
           tenantId: tenant1.id,
@@ -79,6 +92,7 @@ async function main() {
         where: { email: 'patientA@test.com' },
         create: {
           email: 'patientA@test.com',
+          phone: '9000000004',
           password: hashedPassword,
           role: Role.PATIENT,
           tenantId: tenant1.id,
@@ -92,6 +106,7 @@ async function main() {
         where: { email: 'patientB@test.com' },
         create: {
           email: 'patientB@test.com',
+          phone: '9000000005',
           password: hashedPassword,
           role: Role.PATIENT,
           tenantId: tenant2.id,
@@ -105,6 +120,7 @@ async function main() {
         where: { email: 'nurse@test.com' },
         create: {
           email: 'nurse@test.com',
+          phone: '9000000006',
           password: hashedPassword,
           role: Role.NURSE,
           tenantId: tenant1.id,

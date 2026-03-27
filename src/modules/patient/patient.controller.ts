@@ -56,4 +56,10 @@ export class PatientController {
   remove(@Param('id') id: string, @Req() req) {
     return this.patientService.remove(id, req.user);
   }
+
+  @Patch(':id/restore')
+  @Roles('PLATFORM_ADMIN')
+  restore(@Param('id') id: string, @Req() req) {
+    return this.patientService.restore(id, req.user);
+  }
 }
