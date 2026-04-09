@@ -17,6 +17,22 @@ export class PatientService {
     });
   }
 
+  async getMyProfile(user: any) {
+    const patient = await this.prisma.patient.findFirst({
+      where: {
+        userId: user.userId, 
+        tenantId: user.tenantId,
+        isDeleted: false,
+      },
+    });
+  
+    if (!patient) {
+      throw new NotFoundException('Patient profile not found');
+    }
+  
+    return patient;
+  }
+
   async findAll(query: QueryPatientDto, user: any) {
 
     if (query.includeDeleted || query.isDeleted) {

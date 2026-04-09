@@ -23,6 +23,12 @@ import { UpdatePatientDto } from './dto/update-patient.dto';
 export class PatientController {
   constructor(private readonly patientService: PatientService) { }
 
+  @Get('me')
+  @Roles('PATIENT')
+  getMyProfile(@Req() req) {
+    return this.patientService.getMyProfile(req.user);
+  }
+
   @Post('patient')
   @Roles('DOCTOR', 'PLATFORM_ADMIN')
   create(@Body() dto: CreatePatientDto, @Req() req) {
