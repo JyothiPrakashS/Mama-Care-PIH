@@ -16,6 +16,7 @@ enum Role {
 model Tenant {
   id        String   @id @default(uuid())
   name      String
+  inviteCode  String   @unique
   code      String   @unique
   type      String
   createdAt DateTime @default(now())
@@ -25,11 +26,15 @@ model Tenant {
 
 model User {
   id        String   @id @default(uuid())
-  tenantId  String
-  tenant    Tenant  @relation(fields: [tenantId], references: [id])
-  email     String   @unique
+  phone     String   @unique
   password  String
   role      Role
+  email     String   @unique
+
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  
+  patient   Patient?
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
 }
@@ -50,7 +55,9 @@ model Patient {
 
   createdBy   String   // userId (doctor/admin)
 
-   // ✅ Soft delete fields
-  isDeleted   Boolean  @default(false)
+  userId      String?   @unique
+  user        User?     @relation(fields: [userId], references: [id])
+
+  isDeleted   Boolean   @default(false)
   deletedAt   DateTime?
 }
