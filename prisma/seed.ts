@@ -19,6 +19,7 @@ async function main() {
     console.log('Seeding started...');
 
     const hashedPassword = await bcrypt.hash('123456', 10);
+    const hashedSuperAdminPassword = await bcrypt.hash('superadmin123', 10);
 
     await prisma.$transaction(async (tx) => {
       // 1. create Tenants
@@ -129,6 +130,22 @@ async function main() {
           role: Role.NURSE,
         },
       });
+      // 6. create Super Admin
+      const superAdmin = await tx.user.upsert({
+        where: { email: 'superadmin@test.com' },
+        create: {
+          email: 'superadmin@test.com',
+          phone: '9999999999',    
+          password: hashedSuperAdminPassword,
+          role: Role.SUPER_ADMIN,
+          tenantId: null,
+        },
+        update: {
+          password: hashedSuperAdminPassword,
+          role: Role.SUPER_ADMIN,
+          tenantId: null,
+        },
+      });
       // ✅ Clean logs
       console.log('Tenant:', tenant1.id, tenant1.code);
       console.log('Admin:', adminA.email, '| Role:', adminA.role);
@@ -137,6 +154,7 @@ async function main() {
       console.log('Patient:', patientA.email, '| Role:', patientA.role);
       console.log('Patient:', patientB.email, '| Role:', patientB.role);
       console.log('Nurse:', nurse.email, '| Role:', nurse.role);
+      console.log('Super Admin:', superAdmin.email, '| Role:', superAdmin.role);
     });
 
     console.log('Seeding completed ✅');
