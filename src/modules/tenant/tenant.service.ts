@@ -4,6 +4,7 @@ import { generateInviteCode } from 'src/common/utils/invite-code.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import * as bcrypt from 'bcrypt';
 import { QueryTenantDto } from './dto/query-tenant.dto';
+import { generateTempPassword } from 'src/common/utils/password.util';
 
 @Injectable()
 export class TenantService {
@@ -29,6 +30,7 @@ export class TenantService {
       throw new BadRequestException('User with this phone number already exists');
     }
 
+    const tempPassword = generateTempPassword();
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const inviteCode = generateInviteCode(tenantName);
@@ -41,7 +43,7 @@ export class TenantService {
     }
 
     // Transaction (very important)
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
           name: tenantName,
@@ -58,6 +60,7 @@ export class TenantService {
           role: 'PLATFORM_ADMIN',
           tenantId: tenant.id,
           email: `${adminPhone}@tenant.local`,
+          mustChangePassword: true,
         },
       });
 
@@ -66,6 +69,11 @@ export class TenantService {
         adminUser,
       };
     });
+
+    return {
+      ...result,
+      tempPassword,
+    };
   }
 
   async restoreTenant(id: string) {
