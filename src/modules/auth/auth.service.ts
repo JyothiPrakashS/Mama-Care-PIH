@@ -4,6 +4,9 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { RegisterPatientDto } from '../patient/dto/register-patient.dto';
 
+/** Matches `Tenant` in prisma/schema.prisma (keeps typings valid if the editor uses a stale @prisma/client). */
+type TenantLifecycle = { id: string; isActive: boolean; deletedAt: Date | null };
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -19,7 +22,21 @@ export class AuthService {
     }
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) throw new UnauthorizedException();
+    if (!match) throw new UnauthorizedException('Invalid credentials');
+
+    if ((user.role as string) !== 'SUPER_ADMIN') {
+      if (!user.tenantId) {
+        throw new UnauthorizedException('Account is not linked to an active organization');
+      }
+
+      const tenant = (await this.prisma.tenant.findUnique({
+        where: { id: user.tenantId },
+      })) as TenantLifecycle | null;
+
+      if (!tenant || !tenant.isActive || tenant.deletedAt != null) {
+        throw new UnauthorizedException('Organization is deactivated');
+      }
+    }
 
     const payload = {
       sub: user.id,
@@ -40,12 +57,12 @@ export class AuthService {
     const generatedEmail = `${normalizedPhone}@patient.local`;
   
     // 🔹 1. Validate invite code
-    const tenant = await this.prisma.tenant.findFirst({
+    const tenant = (await this.prisma.tenant.findFirst({
       where: { inviteCode },
-    });
-  
-    if (!tenant) {
-      throw new BadRequestException('Invalid invite code');
+    })) as TenantLifecycle | null;
+
+    if (!tenant || !tenant.isActive || tenant.deletedAt != null) {
+      throw new BadRequestException('Invalid invite code or organization is not accepting registrations');
     }
   
     // 🔹 2. Check existing user
@@ -57,7 +74,6 @@ export class AuthService {
       throw new BadRequestException('User already exists');
     }
   
-    // 🔹 3. Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
   
     // 🔹 4. Transaction (VERY IMPORTANT)
