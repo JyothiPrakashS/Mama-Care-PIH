@@ -37,6 +37,8 @@ model User {
   tenantId  String?
   tenant    Tenant? @relation(fields: [tenantId], references: [id])
   
+  mustChangePassword Boolean @default(false)
+  
   patient   Patient?
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())

@@ -23,7 +23,7 @@ export class TenantController {
     return this.tenantService.restoreTenant(id);
   }
 
-  @Get()
+  @Get('tenants')
   @Roles('SUPER_ADMIN')
   findAllTenants(@Query() query: QueryTenantDto) {
     return this.tenantService.findAllTenants(query);

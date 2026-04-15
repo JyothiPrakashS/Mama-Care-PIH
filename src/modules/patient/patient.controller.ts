@@ -36,19 +36,19 @@ export class PatientController {
   }
 
   @Get()
-  @Roles('DOCTOR', 'PLATFORM_ADMIN')
+  @Roles('NURSE', 'DOCTOR', 'PLATFORM_ADMIN')
   findAll(@Query() query: QueryPatientDto, @Req() req) {
     return this.patientService.findAll(query, req.user);
   }
 
   @Get(':id')
-  @Roles('DOCTOR', 'PLATFORM_ADMIN')
+  @Roles('NURSE', 'DOCTOR', 'PLATFORM_ADMIN')
   findOne(@Param('id') id: string, @Req() req) {
     return this.patientService.findOne(id, req.user);
   }
 
   @Patch(':id')
-  @Roles('DOCTOR', 'PLATFORM_ADMIN')
+  @Roles('PLATFORM_ADMIN')
   update(
     @Param('id') id: string,
     @Body() dto: UpdatePatientDto,

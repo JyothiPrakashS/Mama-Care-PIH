@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { RegisterPatientDto } from '../patient/dto/register-patient.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 /** Matches `Tenant` in prisma/schema.prisma (keeps typings valid if the editor uses a stale @prisma/client). */
 type TenantLifecycle = { id: string; isActive: boolean; deletedAt: Date | null };
@@ -48,7 +49,33 @@ export class AuthService {
       token: this.jwt.sign(payload),
       role: user.role,
       tenantId: user.tenantId,
+      mustChangePassword: user.mustChangePassword
     };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+  
+    if (!dbUser) {
+      throw new BadRequestException('User not found');
+    }
+
+    const match = await bcrypt.compare(dto.oldPassword, dbUser.password);
+    if (!match) {
+      throw new BadRequestException('Invalid old password');
+    }
+  
+    const hashed = await bcrypt.hash(dto.newPassword, 10);
+  
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashed,
+        mustChangePassword: false,
+      },
+    });
   }
 
   async registerPatient(dto: RegisterPatientDto) {
