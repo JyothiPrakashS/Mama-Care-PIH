@@ -30,7 +30,7 @@ export class PatientController {
   }
 
   @Post('patient')
-  @Roles('DOCTOR', 'PLATFORM_ADMIN')
+  @Roles('PLATFORM_ADMIN')
   create(@Body() dto: CreatePatientDto, @Req() req) {
     return this.patientService.create(dto, req.user);
   }

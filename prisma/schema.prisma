@@ -15,54 +15,73 @@ enum Role {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  inviteCode  String   @unique
-  code      String   @unique
-  type      String
-  createdAt DateTime @default(now())
-  isActive    Boolean  @default(true)  
-  deletedAt   DateTime?
-  users     User[]
-  patients  Patient[]
+  id             String          @id @default(uuid())
+  name           String
+  inviteCode     String          @unique
+  code           String          @unique
+  type           String
+  createdAt      DateTime        @default(now())
+  isActive       Boolean         @default(true)
+  deletedAt      DateTime?
+  users          User[]
+  patients       Patient[]
+  doctorPatients DoctorPatient[]
 }
 
 model User {
-  id        String   @id @default(uuid())
-  phone     String   @unique
-  password  String
-  role      Role
-  email     String   @unique
+  id       String @id @default(uuid())
+  phone    String @unique
+  password String
+  role     Role
+  email    String @unique
 
-  tenantId  String?
-  tenant    Tenant? @relation(fields: [tenantId], references: [id])
-  
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
   mustChangePassword Boolean @default(false)
-  
-  patient   Patient?
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now())
+
+  patient        Patient?
+  status         String          @default("ACTIVE")
+  createdAt      DateTime        @default(now())
+  doctorPatients DoctorPatient[] @relation("DoctorRelation")
 }
 
 model Patient {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   age         Int
   phone       String
   address     String?
   medicalNote String?
 
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  createdBy   String   // userId (doctor/admin)
+  createdBy String // userId (doctor/admin)
 
-  userId      String?   @unique
-  user        User?     @relation(fields: [userId], references: [id])
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
 
-  isDeleted   Boolean   @default(false)
-  deletedAt   DateTime?
+  isDeleted      Boolean         @default(false)
+  deletedAt      DateTime?
+  doctorMappings DoctorPatient[]
+}
+
+model DoctorPatient {
+  id String @id @default(uuid())
+
+  doctorId  String
+  patientId String
+  tenantId  String
+
+  doctor  User    @relation("DoctorRelation", fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([doctorId, patientId]) // prevent duplicate mapping
 }
