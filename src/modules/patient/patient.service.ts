@@ -7,6 +7,20 @@ import { QueryPatientDto } from './dto/query-patient.dto';
 export class PatientService {
   constructor(private prisma: PrismaService) { }
 
+  private async getAssignedPatientIdsForDoctor(doctorId: string, tenantId: string) {
+    const mappings = await this.prisma.doctorPatient.findMany({
+      where: {
+        doctorId,
+        tenantId,
+      },
+      select: {
+        patientId: true,
+      },
+    });
+
+    return mappings.map((mapping) => mapping.patientId);
+  }
+
   async create(createPatientDto: CreatePatientDto, user: any) {
     return this.prisma.patient.create({
       data: {
@@ -53,6 +67,14 @@ export class PatientService {
       tenantId: user.tenantId, // 🔥 Tenant isolation
     };
 
+    if (user.role === 'DOCTOR') {
+      const assignedPatientIds = await this.getAssignedPatientIdsForDoctor(
+        user.userId,
+        user.tenantId,
+      );
+      where.id = { in: assignedPatientIds };
+    }
+
     // 🔥 Advanced filtering logic
     if (includeDeleted) {
       // no filter → include all
@@ -91,13 +113,21 @@ export class PatientService {
   }
 
   async findOne(id: string, user: any) {
-    const patient = await this.prisma.patient.findFirst({
-      where: {
-        id,
-        tenantId: user.tenantId, // 🔥 CRITICAL: tenant isolation
-        isDeleted: false, // 🔥 exclude deleted
-      },
-    });
+    const where: any = {
+      id,
+      tenantId: user.tenantId, // 🔥 CRITICAL: tenant isolation
+      isDeleted: false, // 🔥 exclude deleted
+    };
+
+    if (user.role === 'DOCTOR') {
+      const assignedPatientIds = await this.getAssignedPatientIdsForDoctor(
+        user.userId,
+        user.tenantId,
+      );
+      where.id = { in: assignedPatientIds };
+    }
+
+    const patient = await this.prisma.patient.findFirst({ where });
 
     if (!patient) {
       throw new NotFoundException('Patient not found');
