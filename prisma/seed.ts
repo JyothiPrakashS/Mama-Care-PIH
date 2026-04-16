@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient, Role } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -18,8 +17,13 @@ async function main() {
   try {
     console.log('Seeding started...');
 
-    const hashedPassword = await bcrypt.hash('123456', 10);
-    const hashedSuperAdminPassword = await bcrypt.hash('superadmin123', 10);
+    // TEMPORARY FOR TESTING ONLY:
+    // Seed plain-text passwords so they are visible directly in DB during QA.
+    // Re-enable the bcrypt lines below before moving to production.
+    // const hashedPassword = await bcrypt.hash('123456', 10);
+    // const hashedSuperAdminPassword = await bcrypt.hash('superadmin123', 10);
+    const plainSeedPassword = '123456';
+    const plainSuperAdminPassword = 'superadmin123';
 
     await prisma.$transaction(async (tx) => {
       // 1. create Tenants
@@ -50,7 +54,7 @@ async function main() {
         create: {
           email: 'adminA@test.com',
           phone: '9000000001',
-          password: hashedPassword,
+          password: plainSeedPassword,
           role: Role.PLATFORM_ADMIN,
           tenantId: tenant1.id,
         },
@@ -64,7 +68,7 @@ async function main() {
         create: {
           email: 'adminB@test.com',
           phone: '9000000002',
-          password: hashedPassword,
+          password: plainSeedPassword,
           role: Role.PLATFORM_ADMIN,
           tenantId: tenant2.id,
         },
@@ -79,7 +83,7 @@ async function main() {
         create: {
           email: 'doctor@test.com',
           phone: '9000000003',
-          password: hashedPassword,
+          password: plainSeedPassword,
           role: Role.DOCTOR,
           tenantId: tenant1.id,
         },
@@ -94,7 +98,7 @@ async function main() {
         create: {
           email: 'patientA@test.com',
           phone: '9000000004',
-          password: hashedPassword,
+          password: plainSeedPassword,
           role: Role.PATIENT,
           tenantId: tenant1.id,
         },
@@ -108,7 +112,7 @@ async function main() {
         create: {
           email: 'patientB@test.com',
           phone: '9000000005',
-          password: hashedPassword,
+          password: plainSeedPassword,
           role: Role.PATIENT,
           tenantId: tenant2.id,
         },
@@ -122,7 +126,7 @@ async function main() {
         create: {
           email: 'nurse@test.com',
           phone: '9000000006',
-          password: hashedPassword,
+          password: plainSeedPassword,
           role: Role.NURSE,
           tenantId: tenant1.id,
         },
@@ -136,12 +140,12 @@ async function main() {
         create: {
           email: 'superadmin@test.com',
           phone: '9999999999',    
-          password: hashedSuperAdminPassword,
+          password: plainSuperAdminPassword,
           role: Role.SUPER_ADMIN,
           tenantId: null,
         },
         update: {
-          password: hashedSuperAdminPassword,
+          password: plainSuperAdminPassword,
           role: Role.SUPER_ADMIN,
           tenantId: null,
         },
