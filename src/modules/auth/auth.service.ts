@@ -22,7 +22,11 @@ export class AuthService {
       if (!user) throw new UnauthorizedException();
     }
 
-    const match = await bcrypt.compare(password, user.password);
+    // TEMPORARY FOR TESTING ONLY:
+    // Store and compare plain-text passwords so the value is visible in DB during QA.
+    // Re-enable the bcrypt line below before moving to production.
+    // const match = await bcrypt.compare(password, user.password);
+    const match = password === user.password;
     if (!match) throw new UnauthorizedException('Invalid credentials');
 
     if ((user.role as string) !== 'SUPER_ADMIN') {
@@ -62,17 +66,25 @@ export class AuthService {
       throw new BadRequestException('User not found');
     }
 
-    const match = await bcrypt.compare(dto.oldPassword, dbUser.password);
+    // TEMPORARY FOR TESTING ONLY:
+    // Compare raw password values directly so password changes continue working with plain-text DB values.
+    // Re-enable the bcrypt line below before moving to production.
+    // const match = await bcrypt.compare(dto.oldPassword, dbUser.password);
+    const match = dto.oldPassword === dbUser.password;
     if (!match) {
       throw new BadRequestException('Invalid old password');
     }
   
-    const hashed = await bcrypt.hash(dto.newPassword, 10);
+    // TEMPORARY FOR TESTING ONLY:
+    // Store the new password in plain text so testers can read it directly from DB.
+    // Re-enable the bcrypt line below before moving to production.
+    // const hashed = await bcrypt.hash(dto.newPassword, 10);
+    const plainPasswordForTesting = dto.newPassword;
   
     return this.prisma.user.update({
       where: { id: userId },
       data: {
-        password: hashed,
+        password: plainPasswordForTesting,
         mustChangePassword: false,
       },
     });
@@ -101,7 +113,11 @@ export class AuthService {
       throw new BadRequestException('User already exists');
     }
   
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // TEMPORARY FOR TESTING ONLY:
+    // Store raw patient password so it is visible in DB during QA.
+    // Re-enable the bcrypt line below before moving to production.
+    // const hashedPassword = await bcrypt.hash(password, 10);
+    const plainPasswordForTesting = password;
   
     // 🔹 4. Transaction (VERY IMPORTANT)
     return this.prisma.$transaction(async (tx) => {
@@ -109,7 +125,7 @@ export class AuthService {
         data: {
           phone,
           email: generatedEmail,
-          password: hashedPassword,
+          password: plainPasswordForTesting,
           role: 'PATIENT',
           tenantId: tenant.id,
         },

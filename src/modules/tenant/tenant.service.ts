@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { generateInviteCode } from 'src/common/utils/invite-code.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
-import * as bcrypt from 'bcrypt';
 import { QueryTenantDto } from './dto/query-tenant.dto';
 import { generateTempPassword } from 'src/common/utils/password.util';
 
@@ -31,7 +30,11 @@ export class TenantService {
     }
 
     const tempPassword = generateTempPassword();
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // TEMPORARY FOR TESTING ONLY:
+    // Store raw admin password so it is visible in DB during QA.
+    // Re-enable the bcrypt line below before moving to production.
+    // const hashedPassword = await bcrypt.hash(password, 10);
+    const plainPasswordForTesting = password;
 
     const inviteCode = generateInviteCode(tenantName);
 
@@ -56,7 +59,7 @@ export class TenantService {
       const adminUser = await tx.user.create({
         data: {
           phone: adminPhone,
-          password: hashedPassword,
+          password: plainPasswordForTesting,
           role: 'PLATFORM_ADMIN',
           tenantId: tenant.id,
           email: `${adminPhone}@tenant.local`,
