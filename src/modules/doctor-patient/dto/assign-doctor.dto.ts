@@ -1,11 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { DoctorPatientPairDto } from './doctor-patient-pair.dto';
 
-export class AssignDoctorDto {
-    @IsString()
-    @IsNotEmpty()
-    patientId: string;
+export class AssignDoctorDto extends DoctorPatientPairDto {
+  @IsString()
+  @IsOptional()
+  tenantId?: string;
 
-    @IsString()
-    @IsNotEmpty()
-    doctorId: string;
-  }
+  @IsBoolean()
+  @IsOptional()
+  isPrimary = false;
+}
