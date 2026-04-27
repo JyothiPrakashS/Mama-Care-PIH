@@ -76,6 +76,7 @@ model DoctorPatient {
   doctorId  String
   patientId String
   tenantId  String
+  isPrimary Boolean @default(false)
 
   doctor  User    @relation("DoctorRelation", fields: [doctorId], references: [id])
   patient Patient @relation(fields: [patientId], references: [id])
