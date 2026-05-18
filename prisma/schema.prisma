@@ -21,7 +21,7 @@ model Tenant {
   code           String          @unique
   type           String
   createdAt      DateTime        @default(now())
-  isActive       Boolean         @default(true)
+  status         EntityStatus    @default(ACTIVE)
   deletedAt      DateTime?
   users          User[]
   patients       Patient[]
@@ -30,6 +30,7 @@ model Tenant {
 
 model User {
   id       String @id @default(uuid())
+  name     String?
   phone    String @unique
   password String
   role     Role
@@ -41,7 +42,7 @@ model User {
   mustChangePassword Boolean @default(false)
 
   patient        Patient?
-  status         String          @default("ACTIVE")
+  status         EntityStatus    @default(ACTIVE)
   createdAt      DateTime        @default(now())
   doctorPatients DoctorPatient[] @relation("DoctorRelation")
 }
@@ -85,4 +86,10 @@ model DoctorPatient {
   createdAt DateTime @default(now())
 
   @@unique([doctorId, patientId]) // prevent duplicate mapping
+}
+
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }

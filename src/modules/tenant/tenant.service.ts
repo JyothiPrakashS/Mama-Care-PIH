@@ -4,6 +4,7 @@ import { generateInviteCode } from 'src/common/utils/invite-code.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { QueryTenantDto } from './dto/query-tenant.dto';
 import { generateTempPassword } from 'src/common/utils/password.util';
+import { EntityStatus } from '@prisma/client';
 
 @Injectable()
 export class TenantService {
@@ -91,22 +92,22 @@ export class TenantService {
     return this.prisma.tenant.update({
       where: { id },
       data: {
-        isActive: true,
+        status: EntityStatus.ACTIVE,
         deletedAt: null,
       },
     });
   }
 
   async findAllTenants(query: QueryTenantDto) {
-    const { isActive, page = '1', limit = '10' } = query;
+    const { status, page = '1', limit = '10' } = query;
     const pageNum = Number.parseInt(String(page), 10) || 1;
     const limitNum = Number.parseInt(String(limit), 10) || 10;
     const skip = (pageNum - 1) * limitNum;
   
     const where: any = {};
   
-    if (isActive !== undefined) {
-      where.isActive = isActive === 'true';
+    if (status !== undefined) {
+      where.status = status;
     }
   
     const [data, total] = await Promise.all([
@@ -161,7 +162,7 @@ export class TenantService {
     return this.prisma.tenant.update({
       where: { id },
       data: {
-        isActive: false,
+        status: EntityStatus.INACTIVE,
         deletedAt: new Date(),
       },
     });

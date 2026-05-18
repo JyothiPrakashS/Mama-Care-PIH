@@ -1,0 +1,2 @@
+-- No-op migration restored so Prisma can apply the local migration sequence.
+-- The actual optional User.name column is added in 20260506173200_add_optional_user_name.

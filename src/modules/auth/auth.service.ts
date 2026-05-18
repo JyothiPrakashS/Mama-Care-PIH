@@ -4,9 +4,10 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { RegisterPatientDto } from '../patient/dto/register-patient.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { EntityStatus } from '@prisma/client';
 
 /** Matches `Tenant` in prisma/schema.prisma (keeps typings valid if the editor uses a stale @prisma/client). */
-type TenantLifecycle = { id: string; isActive: boolean; deletedAt: Date | null };
+type TenantLifecycle = { id: string; status: EntityStatus; deletedAt: Date | null };
 
 @Injectable()
 export class AuthService {
@@ -29,6 +30,10 @@ export class AuthService {
     const match = password === user.password;
     if (!match) throw new UnauthorizedException('Invalid credentials');
 
+    if (user.status !== EntityStatus.ACTIVE) {
+      throw new UnauthorizedException('Account is deactivated');
+    }
+
     if ((user.role as string) !== 'SUPER_ADMIN') {
       if (!user.tenantId) {
         throw new UnauthorizedException('Account is not linked to an active organization');
@@ -36,9 +41,10 @@ export class AuthService {
 
       const tenant = (await this.prisma.tenant.findUnique({
         where: { id: user.tenantId },
+        select: { id: true, status: true, deletedAt: true },
       })) as TenantLifecycle | null;
 
-      if (!tenant || !tenant.isActive || tenant.deletedAt != null) {
+      if (!tenant || tenant.status !== EntityStatus.ACTIVE || tenant.deletedAt != null) {
         throw new UnauthorizedException('Organization is deactivated');
       }
     }
@@ -98,9 +104,10 @@ export class AuthService {
     // 🔹 1. Validate invite code
     const tenant = (await this.prisma.tenant.findFirst({
       where: { inviteCode },
+      select: { id: true, status: true, deletedAt: true },
     })) as TenantLifecycle | null;
 
-    if (!tenant || !tenant.isActive || tenant.deletedAt != null) {
+    if (!tenant || tenant.status !== EntityStatus.ACTIVE || tenant.deletedAt != null) {
       throw new BadRequestException('Invalid invite code or organization is not accepting registrations');
     }
   
