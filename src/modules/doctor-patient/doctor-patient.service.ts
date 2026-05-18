@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { EntityStatus, Prisma, User } from '@prisma/client';
 import { AssignDoctorDto } from './dto/assign-doctor.dto';
 import { PrismaService } from 'src/common/prisma/prisma.service';
-import { User } from '@prisma/client';
 import { SetPrimaryDoctorDto } from './dto/set-primary-doctor.dto';
 
 type DoctorSummary = Pick<User, 'id' | 'email' | 'phone' | 'status' | 'createdAt'>;
@@ -24,6 +23,7 @@ export class DoctorPatientService {
         id: doctorId,
         role: 'DOCTOR',
         tenantId: user.tenantId,
+        status: EntityStatus.ACTIVE,
       },
     });
 
@@ -96,6 +96,19 @@ export class DoctorPatientService {
     tenantId: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
+      const newDoctor = await tx.user.findFirst({
+        where: {
+          id: newDoctorId,
+          role: 'DOCTOR',
+          tenantId,
+          status: EntityStatus.ACTIVE,
+        },
+      });
+
+      if (!newDoctor) {
+        throw new BadRequestException('Invalid new doctor');
+      }
+
       const oldMapping = await tx.doctorPatient.findFirst({
         where: { doctorId: oldDoctorId, patientId, tenantId },
         select: { id: true, isPrimary: true } as const, // eslint-disable-line @typescript-eslint/consistent-type-assertions
@@ -206,6 +219,7 @@ export class DoctorPatientService {
         id: { in: mappings.map((mapping) => mapping.doctorId) } as const, // eslint-disable-line @typescript-eslint/consistent-type-assertions
         tenantId,
         role: 'DOCTOR',
+        status: EntityStatus.ACTIVE,
       },
       select: {
         id: true,

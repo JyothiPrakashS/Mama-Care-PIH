@@ -1,9 +1,10 @@
-import { IsOptional, IsBooleanString, IsNumberString } from 'class-validator';
+import { EntityStatus } from '@prisma/client';
+import { IsEnum, IsNumberString, IsOptional } from 'class-validator';
 
 export class QueryTenantDto {
   @IsOptional()
-  @IsBooleanString()
-  isActive?: string;
+  @IsEnum(EntityStatus)
+  status?: EntityStatus;
 
   @IsOptional()
   @IsNumberString()
