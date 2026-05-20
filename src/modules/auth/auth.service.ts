@@ -34,6 +34,19 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
+    if (user.role === 'PATIENT') {
+      const patient = await this.prisma.patient.findFirst({
+        where: {
+          userId: user.id,
+          isDeleted: false,
+        },
+      });
+
+      if (!patient) {
+        throw new UnauthorizedException('Account is deactivated');
+      }
+    }
+
     if ((user.role as string) !== 'SUPER_ADMIN') {
       if (!user.tenantId) {
         throw new UnauthorizedException('Account is not linked to an active organization');
@@ -118,6 +131,18 @@ export class AuthService {
   
     if (existingUser) {
       throw new BadRequestException('User already exists');
+    }
+
+    const existingPatient = await this.prisma.patient.findFirst({
+      where: {
+        phone,
+        tenantId: tenant.id,
+        isDeleted: false,
+      },
+    });
+
+    if (existingPatient) {
+      throw new BadRequestException('Patient already exists in this organization');
     }
   
     // TEMPORARY FOR TESTING ONLY:

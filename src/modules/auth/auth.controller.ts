@@ -19,7 +19,7 @@ export class AuthController {
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
   changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
-    return this.auth.changePassword(user.sub, dto);
+    return this.auth.changePassword(user.userId, dto);
   }
 
   @Get('profile')

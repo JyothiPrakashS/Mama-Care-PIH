@@ -58,6 +58,8 @@ model Patient {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
+  pregnancyStartDate DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

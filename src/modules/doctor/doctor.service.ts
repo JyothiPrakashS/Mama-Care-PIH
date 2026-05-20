@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { CreateDoctorDto } from "./dto/create-doctor.dto";
 import { PrismaService } from "src/common/prisma/prisma.service";
 import { EntityStatus } from "@prisma/client";
-import { hash } from "bcrypt";
 
 @Injectable()
 export class DoctorService {
@@ -18,14 +17,16 @@ export class DoctorService {
   }
 
   const tempPassword = 'Doctor@123'; // later: generate securely
-  const hashedPassword = await hash(tempPassword, 10);
 
+  // TEMPORARY FOR TESTING ONLY:
+  // Store plain-text password so login works with auth.service QA mode.
+  // Re-enable bcrypt before moving to production.
   return this.prisma.user.create({
     data: {
       name: dto.name,
       email: dto.email,
       phone: dto.phone,
-      password: hashedPassword,
+      password: tempPassword,
       role: 'DOCTOR',
       tenantId,
       status: EntityStatus.ACTIVE,
@@ -56,7 +57,9 @@ async getDoctors(tenantId: string) {
     phone: doc.phone,
     status: doc.status,
     createdAt: doc.createdAt,
-    doctorPatients: doc.doctorPatients.map(dp => ({
+    doctorPatients: doc.doctorPatients
+      .filter((dp) => !dp.patient.isDeleted)
+      .map(dp => ({
       id: dp.id,
       patientId: dp.patientId,
       isPrimary: dp.isPrimary,
@@ -77,7 +80,7 @@ async updateDoctorStatus(doctorId: string, status: EntityStatus, tenantId: strin
     throw new NotFoundException('Doctor not found');
   }
 
-  if (status === EntityStatus.INACTIVE) {
+  if (status === EntityStatus.INACTIVE || status === EntityStatus.SUSPENDED) {
     await this.prisma.doctorPatient.deleteMany({
       where: { doctorId, tenantId },
     });

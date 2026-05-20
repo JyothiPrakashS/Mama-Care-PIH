@@ -29,6 +29,12 @@ export class PatientController {
     return this.patientService.getMyProfile(req.user);
   }
 
+  @Get('me/pregnancy-summary')
+  @Roles('PATIENT')
+  getPregnancySummary(@Req() req) {
+    return this.patientService.getPregnancySummary(req.user);
+  }
+
   @Post('patient')
   @Roles('PLATFORM_ADMIN')
   create(@Body() dto: CreatePatientDto, @Req() req) {

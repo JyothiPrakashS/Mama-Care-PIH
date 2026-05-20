@@ -3,7 +3,6 @@ import { PrismaService } from 'src/common/prisma/prisma.service';
 import { generateInviteCode } from 'src/common/utils/invite-code.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { QueryTenantDto } from './dto/query-tenant.dto';
-import { generateTempPassword } from 'src/common/utils/password.util';
 import { EntityStatus } from '@prisma/client';
 
 @Injectable()
@@ -30,11 +29,6 @@ export class TenantService {
       throw new BadRequestException('User with this phone number already exists');
     }
 
-    const tempPassword = generateTempPassword();
-    // TEMPORARY FOR TESTING ONLY:
-    // Store raw admin password so it is visible in DB during QA.
-    // Re-enable the bcrypt line below before moving to production.
-    // const hashedPassword = await bcrypt.hash(password, 10);
     const plainPasswordForTesting = password;
 
     const inviteCode = generateInviteCode(tenantName);
@@ -74,10 +68,7 @@ export class TenantService {
       };
     });
 
-    return {
-      ...result,
-      tempPassword,
-    };
+    return result;
   }
 
   async restoreTenant(id: string) {
@@ -146,6 +137,7 @@ export class TenantService {
       where: { id },
       data: {
         inviteCode: newCode,
+        code: newCode,
       },
     });
   }

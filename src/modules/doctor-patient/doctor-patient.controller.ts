@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AssignDoctorDto } from './dto/assign-doctor.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
@@ -63,9 +63,6 @@ export class DoctorPatientController {
   @Get('patients/my/doctors')
   @Roles('PATIENT')
   async getMyDoctors(@Req() req): Promise<{ primaryDoctor: DoctorSummary | null; otherDoctors: DoctorSummary[] }> {
-    if (!req.user.patient) {
-      throw new BadRequestException('Patient not found');
-    }
-    return this.doctorPatientService.getDoctorsForPatient(req.user.patient.id, req.user.tenantId);
+    return this.doctorPatientService.getMyDoctors(req.user);
   }
 }

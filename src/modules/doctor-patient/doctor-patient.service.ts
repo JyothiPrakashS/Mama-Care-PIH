@@ -205,6 +205,26 @@ export class DoctorPatientService {
       .filter((patient) => !patient.isDeleted);
   }
 
+  async getMyDoctors(user: { userId?: string; tenantId?: string }) {
+    if (!user?.userId || !user?.tenantId) {
+      throw new BadRequestException('User context is required');
+    }
+
+    const patient = await this.prisma.patient.findFirst({
+      where: {
+        userId: user.userId,
+        tenantId: user.tenantId,
+        isDeleted: false,
+      },
+    });
+
+    if (!patient) {
+      throw new NotFoundException('Patient profile not found');
+    }
+
+    return this.getDoctorsForPatient(patient.id, user.tenantId);
+  }
+
   async getDoctorsForPatient(
     patientId: string,
     tenantId: string,

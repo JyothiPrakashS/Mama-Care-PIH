@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class UpdatePatientDto {
   @IsOptional()
@@ -20,4 +20,8 @@ export class UpdatePatientDto {
   @IsOptional()
   @IsString()
   medicalNote?: string;
+
+  @IsOptional()
+  @IsDateString()
+  pregnancyStartDate?: string;
 }

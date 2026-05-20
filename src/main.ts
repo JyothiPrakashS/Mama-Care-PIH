@@ -9,6 +9,7 @@ async function bootstrap() {
   app.useGlobalPipes( new ValidationPipe({
     whitelist: true, // strips unknown fields
     forbidNonWhitelisted: true, // throws error if extra fields
+    transform: true,
   }),);
   app.enableCors();
   await app.listen(process.env.PORT ?? 3000);

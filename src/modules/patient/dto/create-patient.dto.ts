@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreatePatientDto {
   @IsString()
@@ -10,6 +10,10 @@ export class CreatePatientDto {
   @IsString()
   phone: string;
 
+  @IsString()
+  @MinLength(6)
+  password: string;
+
   @IsOptional()
   @IsString()
   address?: string;
@@ -17,4 +21,8 @@ export class CreatePatientDto {
   @IsOptional()
   @IsString()
   medicalNote?: string;
+
+  @IsOptional()
+  @IsDateString()
+  pregnancyStartDate?: string;
 }
