@@ -1,0 +1,11 @@
+/*
+  Warnings:
+
+  - You are about to drop the column `isActive` on the `Tenant` table. All the data in the column will be lost.
+
+*/
+-- AlterTable
+ALTER TABLE "Patient" ADD COLUMN     "pregnancyStartDate" TIMESTAMP(3);
+
+-- AlterTable
+ALTER TABLE "Tenant" DROP COLUMN "isActive";

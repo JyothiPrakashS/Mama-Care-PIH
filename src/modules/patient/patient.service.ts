@@ -1,11 +1,47 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EntityStatus, Patient, Prisma } from '@prisma/client';
 import { PrismaService } from 'src/common/prisma/prisma.service';
+import {
+  calculateDueDate,
+  calculatePregnancyWeek,
+  calculateTrimester,
+} from 'src/common/utils/pregnancy.util';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { QueryPatientDto } from './dto/query-patient.dto';
+
+type PatientWithPregnancyStartDate = Patient & {
+  pregnancyStartDate: Date | null;
+};
+
+type PatientWithPregnancyInfo = PatientWithPregnancyStartDate & {
+  pregnancyWeek?: number;
+  trimester?: string;
+  dueDate?: Date;
+};
+
 @Injectable()
 export class PatientService {
   constructor(private prisma: PrismaService) { }
+
+  private parsePregnancyStartDate(value?: string): Date | undefined {
+    return value ? new Date(value) : undefined;
+  }
+
+  private withPregnancyInfo(patient: PatientWithPregnancyStartDate): PatientWithPregnancyInfo {
+    if (!patient.pregnancyStartDate) {
+      return patient;
+    }
+
+    const pregnancyWeek = calculatePregnancyWeek(patient.pregnancyStartDate);
+
+    return {
+      ...patient,
+      pregnancyWeek,
+      trimester: calculateTrimester(pregnancyWeek),
+      dueDate: calculateDueDate(patient.pregnancyStartDate),
+    };
+  }
 
   private async getAssignedPatientIdsForDoctor(doctorId: string, tenantId: string) {
     const mappings = await this.prisma.doctorPatient.findMany({
@@ -22,13 +58,56 @@ export class PatientService {
   }
 
   async create(createPatientDto: CreatePatientDto, user: any) {
-    return this.prisma.patient.create({
-      data: {
-        ...createPatientDto,
+    const { pregnancyStartDate, password, phone, ...rest } = createPatientDto;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const generatedEmail = `${normalizedPhone}@patient.local`;
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { phone },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('User already exists with this phone');
+    }
+
+    const existingPatient = await this.prisma.patient.findFirst({
+      where: {
+        phone,
         tenantId: user.tenantId,
-        createdBy: user.userId,
+        isDeleted: false,
       },
     });
+
+    if (existingPatient) {
+      throw new BadRequestException('Patient already exists with this phone');
+    }
+
+    const patient = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name: rest.name,
+          phone,
+          email: generatedEmail,
+          password,
+          role: 'PATIENT',
+          tenantId: user.tenantId,
+          mustChangePassword: true,
+        },
+      });
+
+      return tx.patient.create({
+        data: {
+          ...rest,
+          phone,
+          pregnancyStartDate: this.parsePregnancyStartDate(pregnancyStartDate),
+          tenantId: user.tenantId,
+          createdBy: user.userId,
+          userId: createdUser.id,
+        } as Prisma.PatientUncheckedCreateInput,
+      });
+    });
+
+    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
   }
 
   async getMyProfile(user: any) {
@@ -44,7 +123,7 @@ export class PatientService {
       throw new NotFoundException('Patient profile not found');
     }
   
-    return patient;
+    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
   }
 
   async findAll(query: QueryPatientDto, user: any) {
@@ -102,7 +181,9 @@ export class PatientService {
     ]);
 
     return {
-      data,
+      data: data.map((patient) =>
+        this.withPregnancyInfo(patient as PatientWithPregnancyStartDate),
+      ),
       meta: {
         total,
         page: pageNum,
@@ -113,27 +194,30 @@ export class PatientService {
   }
 
   async findOne(id: string, user: any) {
-    const where: any = {
-      id,
-      tenantId: user.tenantId, // 🔥 CRITICAL: tenant isolation
-      isDeleted: false, // 🔥 exclude deleted
-    };
-
     if (user.role === 'DOCTOR') {
       const assignedPatientIds = await this.getAssignedPatientIdsForDoctor(
         user.userId,
         user.tenantId,
       );
-      where.id = { in: assignedPatientIds };
+
+      if (!assignedPatientIds.includes(id)) {
+        throw new NotFoundException('Patient not found');
+      }
     }
 
-    const patient = await this.prisma.patient.findFirst({ where });
+    const patient = await this.prisma.patient.findFirst({
+      where: {
+        id,
+        tenantId: user.tenantId,
+        isDeleted: false,
+      },
+    });
 
     if (!patient) {
       throw new NotFoundException('Patient not found');
     }
 
-    return patient;
+    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
   }
 
   async update(id: string, dto: UpdatePatientDto, user: any) {
@@ -151,13 +235,52 @@ export class PatientService {
     }
 
     // 🔐 Step 2: Remove restricted fields (VERY IMPORTANT)
-    const { tenantId, createdBy, ...safeData } = dto as UpdatePatientDto & { tenantId?: string; createdBy?: string };
+    const {
+      tenantId,
+      createdBy,
+      pregnancyStartDate,
+      phone,
+      ...safeData
+    } = dto as UpdatePatientDto & { tenantId?: string; createdBy?: string };
 
-    // Step 3: Update
-    return this.prisma.patient.update({
-      where: { id },
-      data: safeData,
+    if (phone && existingPatient.userId) {
+      const phoneTaken = await this.prisma.user.findFirst({
+        where: {
+          phone,
+          NOT: { id: existingPatient.userId },
+        },
+      });
+
+      if (phoneTaken) {
+        throw new BadRequestException('Phone number already in use');
+      }
+    }
+
+    const patient = await this.prisma.$transaction(async (tx) => {
+      if (phone && existingPatient.userId) {
+        const normalizedPhone = phone.replace(/\D/g, '');
+        await tx.user.update({
+          where: { id: existingPatient.userId },
+          data: {
+            phone,
+            email: `${normalizedPhone}@patient.local`,
+          },
+        });
+      }
+
+      return tx.patient.update({
+        where: { id },
+        data: {
+          ...safeData,
+          ...(phone !== undefined && { phone }),
+          ...(pregnancyStartDate !== undefined && {
+            pregnancyStartDate: this.parsePregnancyStartDate(pregnancyStartDate),
+          }),
+        } as Prisma.PatientUpdateInput,
+      });
     });
+
+    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
   }
 
   async remove(id: string, user: any) {
@@ -173,12 +296,25 @@ export class PatientService {
       throw new NotFoundException('Patient not found');
     }
 
-    return this.prisma.patient.update({
-      where: { id },
-      data: {
-        isDeleted: true,
-        deletedAt: new Date(),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.doctorPatient.deleteMany({
+        where: { patientId: id, tenantId: user.tenantId },
+      });
+
+      if (patient.userId) {
+        await tx.user.update({
+          where: { id: patient.userId },
+          data: { status: EntityStatus.INACTIVE },
+        });
+      }
+
+      return tx.patient.update({
+        where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+        },
+      });
     });
   }
 
@@ -195,12 +331,48 @@ export class PatientService {
       throw new NotFoundException('Deleted patient not found');
     }
   
-    return this.prisma.patient.update({
-      where: { id },
-      data: {
-        isDeleted: false,
-        deletedAt: null,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      if (patient.userId) {
+        await tx.user.update({
+          where: { id: patient.userId },
+          data: { status: EntityStatus.ACTIVE },
+        });
+      }
+
+      return tx.patient.update({
+        where: { id },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
     });
+  }
+
+  async getPregnancySummary(user: { userId: string; tenantId: string }) {
+    const patient = (await this.prisma.patient.findFirst({
+      where: {
+        userId: user.userId,
+        tenantId: user.tenantId,
+        isDeleted: false,
+      },
+    })) as PatientWithPregnancyStartDate | null;
+
+    if (!patient) {
+      throw new NotFoundException('Patient profile not found');
+    }
+
+    const startDate = patient.pregnancyStartDate;
+    if (!startDate) {
+      throw new BadRequestException('Pregnancy start date not configured');
+    }
+
+    const week = calculatePregnancyWeek(startDate);
+
+    return {
+      pregnancyWeek: week,
+      trimester: calculateTrimester(week),
+      estimatedDueDate: calculateDueDate(startDate),
+    };
   }
 }
