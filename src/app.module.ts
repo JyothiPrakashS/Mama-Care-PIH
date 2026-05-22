@@ -8,6 +8,8 @@ import { PatientModule } from './modules/patient/patient.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { DoctorPatientModule } from './modules/doctor-patient/doctor-patient.module';
 import { DoctorModule } from './modules/doctor/doctor.module';
+import { PatientProgramModule } from './modules/patient-program/patient-program.module';
+import { CareProgramModule } from './modules/care-program/care-program.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { DoctorModule } from './modules/doctor/doctor.module';
     TenantModule,
     DoctorPatientModule,
     DoctorModule,
+    PatientProgramModule,
+    CareProgramModule,
   ],
   controllers: [AppController],
   providers: [AppService],

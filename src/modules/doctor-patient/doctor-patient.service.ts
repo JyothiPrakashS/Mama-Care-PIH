@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EntityStatus, Prisma, User } from '@prisma/client';
+import {
+  buildPatientProgramSummary,
+  fetchActiveProgramsByPatientIds,
+} from 'src/common/utils/patient-enrichment.util';
 import { AssignDoctorDto } from './dto/assign-doctor.dto';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { SetPrimaryDoctorDto } from './dto/set-primary-doctor.dto';
@@ -200,9 +204,19 @@ export class DoctorPatientService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return mappings
+    const patients = mappings
       .map((mapping) => mapping.patient)
       .filter((patient) => !patient.isDeleted);
+
+    const programMap = await fetchActiveProgramsByPatientIds(
+      this.prisma,
+      patients.map((patient) => patient.id),
+    );
+
+    return patients.map((patient) => ({
+      ...patient,
+      ...buildPatientProgramSummary(programMap.get(patient.id) ?? null),
+    }));
   }
 
   async getMyDoctors(user: { userId?: string; tenantId?: string }) {

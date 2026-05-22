@@ -150,15 +150,133 @@ async function main() {
           tenantId: null,
         },
       });
+
+      // 7. create linked Patient profiles (required for care program assignment)
+      const patientProfileA = await tx.patient.upsert({
+        where: { userId: patientA.id },
+        create: {
+          name: 'Patient A',
+          age: 28,
+          phone: patientA.phone,
+          tenantId: tenant1.id,
+          userId: patientA.id,
+          createdBy: adminA.id,
+        },
+        update: {
+          name: 'Patient A',
+          phone: patientA.phone,
+          tenantId: tenant1.id,
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
+
+      const patientProfileB = await tx.patient.upsert({
+        where: { userId: patientB.id },
+        create: {
+          name: 'Patient B',
+          age: 30,
+          phone: patientB.phone,
+          tenantId: tenant2.id,
+          userId: patientB.id,
+          createdBy: adminB.id,
+        },
+        update: {
+          name: 'Patient B',
+          phone: patientB.phone,
+          tenantId: tenant2.id,
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
+
+      // 8. create Care Programs
+      const normalProgram = await tx.careProgram.upsert({
+        where: { code: 'NORMAL_PREGNANCY' },
+        create: {
+          name: 'Normal Pregnancy Program',
+          code: 'NORMAL_PREGNANCY',
+          description: 'Standard pregnancy monitoring program',
+          isPaid: false,
+        },
+        update: {
+          name: 'Normal Pregnancy Program',
+          description: 'Standard pregnancy monitoring program',
+          isPaid: false,
+          isActive: true,
+        },
+      });
+
+      const pihProgram = await tx.careProgram.upsert({
+        where: { code: 'PIH_CARE' },
+        create: {
+          name: 'PIH Care Program',
+          code: 'PIH_CARE',
+          description: 'Pregnancy induced hypertension care program',
+          isPaid: false,
+        },
+        update: {
+          name: 'PIH Care Program',
+          description: 'Pregnancy induced hypertension care program',
+          isPaid: false,
+          isActive: true,
+        },
+      });
+
+      // 9. assign patients to care programs
+      await tx.patientProgram.upsert({
+        where: {
+          patientId_programId: {
+            patientId: patientProfileA.id,
+            programId: normalProgram.id,
+          },
+        },
+        create: {
+          patientId: patientProfileA.id,
+          programId: normalProgram.id,
+          startDate: new Date(),
+          isActive: true,
+        },
+        update: {
+          startDate: new Date(),
+          endDate: null,
+          isActive: true,
+        },
+      });
+
+      await tx.patientProgram.upsert({
+        where: {
+          patientId_programId: {
+            patientId: patientProfileB.id,
+            programId: pihProgram.id,
+          },
+        },
+        create: {
+          patientId: patientProfileB.id,
+          programId: pihProgram.id,
+          startDate: new Date(),
+          isActive: true,
+        },
+        update: {
+          startDate: new Date(),
+          endDate: null,
+          isActive: true,
+        },
+      });
+
       // ✅ Clean logs
       console.log('Tenant:', tenant1.id, tenant1.code);
       console.log('Admin:', adminA.email, '| Role:', adminA.role);
       console.log('Admin:', adminB.email, '| Role:', adminB.role);
       console.log('Doctor:', doctor.email, '| Role:', doctor.role);
-      console.log('Patient:', patientA.email, '| Role:', patientA.role);
-      console.log('Patient:', patientB.email, '| Role:', patientB.role);
+      console.log('Patient User:', patientA.email, '| Role:', patientA.role);
+      console.log('Patient Profile A:', patientProfileA.id);
+      console.log('Patient User:', patientB.email, '| Role:', patientB.role);
+      console.log('Patient Profile B:', patientProfileB.id);
       console.log('Nurse:', nurse.email, '| Role:', nurse.role);
       console.log('Super Admin:', superAdmin.email, '| Role:', superAdmin.role);
+      console.log('Care Program:', normalProgram.code, normalProgram.id);
+      console.log('Care Program:', pihProgram.code, pihProgram.id);
     });
 
     console.log('Seeding completed ✅');

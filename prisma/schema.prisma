@@ -71,6 +71,7 @@ model Patient {
   isDeleted      Boolean         @default(false)
   deletedAt      DateTime?
   doctorMappings DoctorPatient[]
+  patientPrograms PatientProgram[]
 }
 
 model DoctorPatient {
@@ -88,6 +89,42 @@ model DoctorPatient {
   createdAt DateTime @default(now())
 
   @@unique([doctorId, patientId]) // prevent duplicate mapping
+}
+
+model CareProgram {
+  id          String @id @default(uuid())
+
+  name        String @unique
+  code        String @unique
+
+  description String?
+
+  isPaid      Boolean @default(false)
+
+  isActive    Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+
+  patientPrograms PatientProgram[]
+}
+
+model PatientProgram {
+  id String @id @default(uuid())
+
+  patientId String
+  programId String
+
+  startDate DateTime
+  endDate   DateTime?
+
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  program CareProgram @relation(fields: [programId], references: [id])
+
+  @@unique([patientId, programId])
 }
 
 enum EntityStatus {
