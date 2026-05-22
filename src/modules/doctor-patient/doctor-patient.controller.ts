@@ -5,7 +5,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { DoctorPatientService } from './doctor-patient.service';
 import { ReassignDoctorDto } from './dto/reassign-doctor.dto';
-import { Patient, User } from '@prisma/client';
+import { User } from '@prisma/client';
 import { SetPrimaryDoctorDto } from './dto/set-primary-doctor.dto';
 
 type DoctorSummary = Pick<User, 'id' | 'email' | 'phone' | 'status' | 'createdAt'>;
@@ -50,7 +50,7 @@ export class DoctorPatientController {
 
   @Get('my-patients')
   @Roles('DOCTOR')
-  async getMyPatients(@Req() req): Promise<Patient[] | null> {
+  async getMyPatients(@Req() req) {
     return this.doctorPatientService.getMyPatients(req.user as { userId?: string; tenantId?: string });
   }
 

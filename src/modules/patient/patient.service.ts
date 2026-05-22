@@ -9,6 +9,12 @@ import {
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { QueryPatientDto } from './dto/query-patient.dto';
+import {
+  buildPatientProgramSummary,
+  fetchActiveProgramForPatient,
+  fetchActiveProgramsByPatientIds,
+  PatientProgramSummary,
+} from 'src/common/utils/patient-enrichment.util';
 
 type PatientWithPregnancyStartDate = Patient & {
   pregnancyStartDate: Date | null;
@@ -19,6 +25,8 @@ type PatientWithPregnancyInfo = PatientWithPregnancyStartDate & {
   trimester?: string;
   dueDate?: Date;
 };
+
+type PatientResponse = PatientWithPregnancyInfo & PatientProgramSummary;
 
 @Injectable()
 export class PatientService {
@@ -41,6 +49,32 @@ export class PatientService {
       trimester: calculateTrimester(pregnancyWeek),
       dueDate: calculateDueDate(patient.pregnancyStartDate),
     };
+  }
+
+  private withPatientDetails(
+    patient: PatientWithPregnancyStartDate,
+    activeProgram?: Awaited<ReturnType<typeof fetchActiveProgramForPatient>>,
+  ): PatientResponse {
+    return {
+      ...this.withPregnancyInfo(patient),
+      ...buildPatientProgramSummary(activeProgram),
+    };
+  }
+
+  private async enrichPatient(patient: PatientWithPregnancyStartDate): Promise<PatientResponse> {
+    const activeProgram = await fetchActiveProgramForPatient(this.prisma, patient.id);
+    return this.withPatientDetails(patient, activeProgram);
+  }
+
+  private async enrichPatients(patients: PatientWithPregnancyStartDate[]): Promise<PatientResponse[]> {
+    const programMap = await fetchActiveProgramsByPatientIds(
+      this.prisma,
+      patients.map((patient) => patient.id),
+    );
+
+    return patients.map((patient) =>
+      this.withPatientDetails(patient, programMap.get(patient.id) ?? null),
+    );
   }
 
   private async getAssignedPatientIdsForDoctor(doctorId: string, tenantId: string) {
@@ -107,7 +141,7 @@ export class PatientService {
       });
     });
 
-    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
+    return this.enrichPatient(patient as PatientWithPregnancyStartDate);
   }
 
   async getMyProfile(user: any) {
@@ -123,7 +157,7 @@ export class PatientService {
       throw new NotFoundException('Patient profile not found');
     }
   
-    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
+    return this.enrichPatient(patient as PatientWithPregnancyStartDate);
   }
 
   async findAll(query: QueryPatientDto, user: any) {
@@ -181,8 +215,8 @@ export class PatientService {
     ]);
 
     return {
-      data: data.map((patient) =>
-        this.withPregnancyInfo(patient as PatientWithPregnancyStartDate),
+      data: await this.enrichPatients(
+        data as PatientWithPregnancyStartDate[],
       ),
       meta: {
         total,
@@ -217,7 +251,7 @@ export class PatientService {
       throw new NotFoundException('Patient not found');
     }
 
-    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
+    return this.enrichPatient(patient as PatientWithPregnancyStartDate);
   }
 
   async update(id: string, dto: UpdatePatientDto, user: any) {
@@ -280,7 +314,7 @@ export class PatientService {
       });
     });
 
-    return this.withPregnancyInfo(patient as PatientWithPregnancyStartDate);
+    return this.enrichPatient(patient as PatientWithPregnancyStartDate);
   }
 
   async remove(id: string, user: any) {
