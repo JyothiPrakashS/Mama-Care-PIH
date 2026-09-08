@@ -14,6 +14,46 @@ enum Role {
   PATIENT
 }
 
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ActivityType {
+  EXERCISE
+  YOGA
+  BREATHING
+  MUSIC
+  RELAXATION
+  OTHER
+}
+
+enum ContentType {
+  IMAGE
+  VIDEO
+  PDF
+  DOCUMENT
+  LINK
+}
+
+enum ScheduleVersionStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+enum ScheduleRuleType {
+  REPEAT
+  SEQUENCE
+}
+
+enum PatientActivityStatus {
+  PENDING
+  COMPLETED
+  MISSED
+}
+
 model Tenant {
   id             String          @id @default(uuid())
   name           String
@@ -29,12 +69,12 @@ model Tenant {
 }
 
 model User {
-  id       String @id @default(uuid())
+  id       String  @id @default(uuid())
   name     String?
-  phone    String @unique
+  phone    String  @unique
   password String
   role     Role
-  email    String @unique
+  email    String  @unique
 
   tenantId String?
   tenant   Tenant? @relation(fields: [tenantId], references: [id])
@@ -45,6 +85,9 @@ model User {
   status         EntityStatus    @default(ACTIVE)
   createdAt      DateTime        @default(now())
   doctorPatients DoctorPatient[] @relation("DoctorRelation")
+
+  scheduleAssignmentsAssigned PatientScheduleAssignment[] @relation("ScheduleAssignmentAssignedBy")
+  activityOverridesCreated    PatientActivityOverride[]   @relation("ActivityOverrideCreatedBy")
 }
 
 model Patient {
@@ -68,9 +111,9 @@ model Patient {
   userId String? @unique
   user   User?   @relation(fields: [userId], references: [id])
 
-  isDeleted      Boolean         @default(false)
-  deletedAt      DateTime?
-  doctorMappings DoctorPatient[]
+  isDeleted       Boolean          @default(false)
+  deletedAt       DateTime?
+  doctorMappings  DoctorPatient[]
   patientPrograms PatientProgram[]
 }
 
@@ -92,20 +135,21 @@ model DoctorPatient {
 }
 
 model CareProgram {
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
 
-  name        String @unique
-  code        String @unique
+  name String @unique
+  code String @unique
 
   description String?
 
-  isPaid      Boolean @default(false)
+  isPaid Boolean @default(false)
 
-  isActive    Boolean @default(true)
+  isActive Boolean @default(true)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  patientPrograms PatientProgram[]
+  patientPrograms   PatientProgram[]
+  scheduleTemplates ScheduleTemplate[]
 }
 
 model PatientProgram {
@@ -117,18 +161,236 @@ model PatientProgram {
   startDate DateTime
   endDate   DateTime?
 
-  isActive  Boolean @default(true)
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
 
-  patient Patient @relation(fields: [patientId], references: [id])
+  patient Patient     @relation(fields: [patientId], references: [id])
   program CareProgram @relation(fields: [programId], references: [id])
+
+  scheduleAssignments PatientScheduleAssignment[]
+  activityRecords     PatientActivityRecord[]
 
   @@unique([patientId, programId])
 }
 
-enum EntityStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
+model Activity {
+  id String @id @default(uuid())
+
+  title       String
+  type        ActivityType
+  description String?
+
+  instructions String?
+  quickNote    String?
+
+  estimatedMinutes Int?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contents ActivityContent[]
+  ruleItems ScheduleRuleItem[]
+
+  originalOverrides    PatientActivityOverride[] @relation("OverrideOriginalActivity")
+  replacementOverrides PatientActivityOverride[] @relation("OverrideReplacementActivity")
+  activityRecords      PatientActivityRecord[]
+
+  @@index([type, isActive])
+  @@index([title])
+}
+
+model Content {
+  id String @id @default(uuid())
+
+  title       String
+  description String?
+
+  type ContentType
+
+  storageKey   String?
+  contentUrl   String?
+  thumbnailUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities ActivityContent[]
+}
+
+model ActivityContent {
+  id String @id @default(uuid())
+
+  activityId String
+  contentId  String
+
+  displayOrder Int @default(0)
+
+  activity Activity @relation(fields: [activityId], references: [id])
+  content  Content  @relation(fields: [contentId], references: [id])
+
+  @@unique([activityId, contentId])
+  @@index([activityId, displayOrder])
+}
+
+model ScheduleTemplate {
+  id String @id @default(uuid())
+
+  careProgramId String
+  careProgram   CareProgram @relation(fields: [careProgramId], references: [id])
+
+  name        String
+  code        String
+  description String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions ScheduleVersion[]
+
+  @@unique([careProgramId, code])
+  @@index([careProgramId, isActive])
+}
+
+model ScheduleVersion {
+  id String @id @default(uuid())
+
+  templateId String
+  template   ScheduleTemplate @relation(fields: [templateId], references: [id])
+
+  versionNumber Int
+  status        ScheduleVersionStatus @default(DRAFT)
+
+  name        String?
+  description String?
+
+  publishedAt DateTime?
+  retiredAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rules       ScheduleRule[]
+  assignments PatientScheduleAssignment[]
+
+  @@unique([templateId, versionNumber])
+  @@index([templateId, status])
+}
+
+model ScheduleRule {
+  id String @id @default(uuid())
+
+  scheduleVersionId String
+  scheduleVersion   ScheduleVersion @relation(fields: [scheduleVersionId], references: [id])
+
+  startInterventionDay Int
+  endInterventionDay   Int
+
+  ruleType ScheduleRuleType
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ScheduleRuleItem[]
+
+  @@index([scheduleVersionId, startInterventionDay, endInterventionDay])
+}
+
+model ScheduleRuleItem {
+  id String @id @default(uuid())
+
+  ruleId String
+  rule   ScheduleRule @relation(fields: [ruleId], references: [id])
+
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id])
+
+  position Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ruleId, position])
+  @@index([activityId])
+}
+
+model PatientScheduleAssignment {
+  id String @id @default(uuid())
+
+  patientProgramId String
+  patientProgram   PatientProgram @relation(fields: [patientProgramId], references: [id])
+
+  scheduleVersionId String
+  scheduleVersion   ScheduleVersion @relation(fields: [scheduleVersionId], references: [id])
+
+  assignedAt DateTime @default(now())
+  assignedBy String
+  assignedByUser User @relation("ScheduleAssignmentAssignedBy", fields: [assignedBy], references: [id])
+
+  endedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  overrides PatientActivityOverride[]
+
+  @@index([patientProgramId, endedAt])
+  @@index([scheduleVersionId])
+  @@index([assignedBy])
+}
+
+model PatientActivityOverride {
+  id String @id @default(uuid())
+
+  patientScheduleAssignmentId String
+  patientScheduleAssignment   PatientScheduleAssignment @relation(fields: [patientScheduleAssignmentId], references: [id])
+
+  interventionDay Int
+
+  originalActivityId String?
+  originalActivity   Activity? @relation("OverrideOriginalActivity", fields: [originalActivityId], references: [id])
+
+  replacementActivityId String
+  replacementActivity   Activity @relation("OverrideReplacementActivity", fields: [replacementActivityId], references: [id])
+
+  createdBy     String
+  createdByUser User   @relation("ActivityOverrideCreatedBy", fields: [createdBy], references: [id])
+
+  reason String?
+
+  endedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientScheduleAssignmentId, interventionDay])
+  @@index([replacementActivityId])
+  @@index([createdBy])
+}
+
+model PatientActivityRecord {
+  id String @id @default(uuid())
+
+  patientProgramId String
+  patientProgram   PatientProgram @relation(fields: [patientProgramId], references: [id])
+
+  interventionDay Int
+
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id])
+
+  status PatientActivityStatus @default(PENDING)
+
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([patientProgramId, interventionDay])
+  @@index([patientProgramId, status])
+  @@index([activityId])
 }
