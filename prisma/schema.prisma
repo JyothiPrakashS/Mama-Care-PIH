@@ -177,8 +177,10 @@ model PatientProgram {
 model Activity {
   id String @id @default(uuid())
 
-  title       String
-  type        ActivityType
+  code  String @unique
+  title String
+  type  ActivityType
+
   description String?
 
   instructions String?
@@ -191,7 +193,7 @@ model Activity {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contents ActivityContent[]
+  contents  ActivityContent[]
   ruleItems ScheduleRuleItem[]
 
   originalOverrides    PatientActivityOverride[] @relation("OverrideOriginalActivity")
@@ -205,7 +207,8 @@ model Activity {
 model Content {
   id String @id @default(uuid())
 
-  title       String
+  code  String @unique
+  title String
   description String?
 
   type ContentType
