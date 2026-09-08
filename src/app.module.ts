@@ -10,6 +10,9 @@ import { DoctorPatientModule } from './modules/doctor-patient/doctor-patient.mod
 import { DoctorModule } from './modules/doctor/doctor.module';
 import { PatientProgramModule } from './modules/patient-program/patient-program.module';
 import { CareProgramModule } from './modules/care-program/care-program.module';
+import { ActivityModule } from './modules/activity/activity.module';
+import { ContentModule } from './modules/content/content.module';
+import { ScheduleModule } from './modules/schedule/schedule.module';
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { CareProgramModule } from './modules/care-program/care-program.module';
     DoctorModule,
     PatientProgramModule,
     CareProgramModule,
+    ActivityModule,
+    ContentModule,
+    ScheduleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

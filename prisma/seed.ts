@@ -264,6 +264,186 @@ async function main() {
         },
       });
 
+      // 10. Platform Activity library (safe metadata only — no invented clinical instructions)
+      const activityDefs = [
+        { code: 'EXERCISE_A', title: 'Prenatal Exercise A', type: 'EXERCISE' as const },
+        { code: 'EXERCISE_B', title: 'Prenatal Exercise B', type: 'EXERCISE' as const },
+        { code: 'EXERCISE_C', title: 'Prenatal Exercise C', type: 'EXERCISE' as const },
+        { code: 'MUSIC_A', title: 'Music Therapy A', type: 'MUSIC' as const },
+        { code: 'MUSIC_B', title: 'Music Therapy B', type: 'MUSIC' as const },
+        { code: 'MUSIC_C', title: 'Music Therapy C', type: 'MUSIC' as const },
+      ];
+
+      const activities: Record<string, { id: string; code: string }> = {};
+      for (const def of activityDefs) {
+        const activity = await tx.activity.upsert({
+          where: { code: def.code },
+          create: {
+            code: def.code,
+            title: def.title,
+            type: def.type,
+            description: `${def.title} (platform library placeholder)`,
+            isActive: true,
+          },
+          update: {
+            title: def.title,
+            type: def.type,
+            isActive: true,
+          },
+        });
+        activities[def.code] = activity;
+      }
+
+      // Optional reusable content placeholders (metadata only)
+      const contentDefs = [
+        { code: 'MUSIC_A_INTRO_LINK', title: 'Music Therapy A Intro', type: 'LINK' as const },
+        { code: 'EXERCISE_A_INTRO_LINK', title: 'Exercise A Intro', type: 'LINK' as const },
+      ];
+
+      const contents: Record<string, { id: string }> = {};
+      for (const def of contentDefs) {
+        const content = await tx.content.upsert({
+          where: { code: def.code },
+          create: {
+            code: def.code,
+            title: def.title,
+            type: def.type,
+            description: 'Placeholder content metadata — no clinical claims',
+            contentUrl: `https://example.invalid/content/${def.code.toLowerCase()}`,
+          },
+          update: {
+            title: def.title,
+            type: def.type,
+          },
+        });
+        contents[def.code] = content;
+      }
+
+      await tx.activityContent.upsert({
+        where: {
+          activityId_contentId: {
+            activityId: activities.EXERCISE_A.id,
+            contentId: contents.EXERCISE_A_INTRO_LINK.id,
+          },
+        },
+        create: {
+          activityId: activities.EXERCISE_A.id,
+          contentId: contents.EXERCISE_A_INTRO_LINK.id,
+          displayOrder: 0,
+        },
+        update: { displayOrder: 0 },
+      });
+
+      await tx.activityContent.upsert({
+        where: {
+          activityId_contentId: {
+            activityId: activities.MUSIC_A.id,
+            contentId: contents.MUSIC_A_INTRO_LINK.id,
+          },
+        },
+        create: {
+          activityId: activities.MUSIC_A.id,
+          contentId: contents.MUSIC_A_INTRO_LINK.id,
+          displayOrder: 0,
+        },
+        update: { displayOrder: 0 },
+      });
+
+      // 11. PIH Standard Intervention template + published V1 (idempotent)
+      const pihTemplate = await tx.scheduleTemplate.upsert({
+        where: {
+          careProgramId_code: {
+            careProgramId: pihProgram.id,
+            code: 'PIH_STANDARD_INTERVENTION',
+          },
+        },
+        create: {
+          careProgramId: pihProgram.id,
+          name: 'PIH Standard Intervention',
+          code: 'PIH_STANDARD_INTERVENTION',
+          description: 'Platform-owned PIH intervention schedule template',
+          isActive: true,
+        },
+        update: {
+          name: 'PIH Standard Intervention',
+          description: 'Platform-owned PIH intervention schedule template',
+          isActive: true,
+        },
+      });
+
+      let pihVersion = await tx.scheduleVersion.findUnique({
+        where: {
+          templateId_versionNumber: {
+            templateId: pihTemplate.id,
+            versionNumber: 1,
+          },
+        },
+        include: { rules: { include: { items: true } } },
+      });
+
+      if (!pihVersion) {
+        pihVersion = await tx.scheduleVersion.create({
+          data: {
+            templateId: pihTemplate.id,
+            versionNumber: 1,
+            status: 'DRAFT',
+            name: 'PIH Standard Intervention V1',
+            description: 'Initial platform configuration: repeating exercise + music pattern',
+          },
+          include: { rules: { include: { items: true } } },
+        });
+      }
+
+      // Only mutate configuration while DRAFT; never rewrite PUBLISHED/RETIRED versions
+      if (pihVersion.status === 'DRAFT') {
+        await tx.scheduleRuleItem.deleteMany({
+          where: { rule: { scheduleVersionId: pihVersion.id } },
+        });
+        await tx.scheduleRule.deleteMany({
+          where: { scheduleVersionId: pihVersion.id },
+        });
+
+        const rule = await tx.scheduleRule.create({
+          data: {
+            scheduleVersionId: pihVersion.id,
+            startInterventionDay: 1,
+            endInterventionDay: 12,
+            ruleType: 'REPEAT',
+          },
+        });
+
+        const ruleItemDefs = [
+          { position: 1, activityCode: 'EXERCISE_A' },
+          { position: 2, activityCode: 'EXERCISE_B' },
+          { position: 3, activityCode: 'EXERCISE_C' },
+          { position: 4, activityCode: 'MUSIC_A' },
+          { position: 5, activityCode: 'MUSIC_B' },
+          { position: 6, activityCode: 'MUSIC_C' },
+        ];
+
+        for (const item of ruleItemDefs) {
+          await tx.scheduleRuleItem.create({
+            data: {
+              ruleId: rule.id,
+              position: item.position,
+              activityId: activities[item.activityCode].id,
+            },
+          });
+        }
+
+        pihVersion = await tx.scheduleVersion.update({
+          where: { id: pihVersion.id },
+          data: {
+            status: 'PUBLISHED',
+            publishedAt: new Date(),
+            name: 'PIH Standard Intervention V1',
+            description:
+              'Initial platform configuration: repeating exercise + music pattern',
+          },
+          include: { rules: { include: { items: true } } },
+        });
+      }
+
       // ✅ Clean logs
       console.log('Tenant:', tenant1.id, tenant1.code);
       console.log('Admin:', adminA.email, '| Role:', adminA.role);
@@ -277,6 +457,17 @@ async function main() {
       console.log('Super Admin:', superAdmin.email, '| Role:', superAdmin.role);
       console.log('Care Program:', normalProgram.code, normalProgram.id);
       console.log('Care Program:', pihProgram.code, pihProgram.id);
+      console.log('Schedule Template:', pihTemplate.code, pihTemplate.id);
+      console.log(
+        'Schedule Version:',
+        `V${pihVersion.versionNumber}`,
+        pihVersion.status,
+        pihVersion.id,
+      );
+      console.log(
+        'Activities seeded:',
+        Object.keys(activities).join(', '),
+      );
     });
 
     console.log('Seeding completed ✅');
