@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ScheduleVersionStatus } from '@prisma/client';
+import { Prisma, ScheduleVersionStatus } from '@prisma/client';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { AdoptScheduleVersionDto } from './dto/adopt-schedule-version.dto';
 import { QueryTenantScheduleAdoptionDto } from './dto/query-tenant-schedule-adoption.dto';
@@ -253,9 +253,18 @@ export class TenantScheduleService {
     return patientProgram;
   }
 
-  private async assertAssignableVersion(tenantId: string, scheduleVersionId: string) {
+  private async assertAssignableVersion(
+    tenantId: string,
+    scheduleVersionId: string,
+    careProgramId: string,
+  ) {
     const version = await this.prisma.scheduleVersion.findUnique({
       where: { id: scheduleVersionId },
+      include: {
+        template: {
+          select: { careProgramId: true },
+        },
+      },
     });
     if (!version) {
       throw new NotFoundException('Schedule version not found');
@@ -263,6 +272,12 @@ export class TenantScheduleService {
     if (version.status !== ScheduleVersionStatus.PUBLISHED) {
       throw new BadRequestException(
         'Only PUBLISHED schedule versions can be assigned',
+      );
+    }
+
+    if (version.template.careProgramId !== careProgramId) {
+      throw new BadRequestException(
+        'Schedule version does not belong to the patient program care program',
       );
     }
 
@@ -282,6 +297,18 @@ export class TenantScheduleService {
     return version;
   }
 
+  private rethrowAssignmentConflict(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new BadRequestException(
+        'Patient program already has an active schedule assignment. Use migrate to change it.',
+      );
+    }
+    throw error;
+  }
+
   async assignToPatientProgram(
     patientProgramId: string,
     dto: AssignPatientScheduleDto,
@@ -292,26 +319,39 @@ export class TenantScheduleService {
       user,
     );
 
-    await this.getTenantScopedPatientProgram(patientProgramId, effectiveTenantId);
-    await this.assertAssignableVersion(effectiveTenantId, dto.scheduleVersionId);
+    const patientProgram = await this.getTenantScopedPatientProgram(
+      patientProgramId,
+      effectiveTenantId,
+    );
+    await this.assertAssignableVersion(
+      effectiveTenantId,
+      dto.scheduleVersionId,
+      patientProgram.programId,
+    );
 
-    const active = await this.prisma.patientScheduleAssignment.findFirst({
-      where: { patientProgramId, endedAt: null },
-    });
-    if (active) {
-      throw new BadRequestException(
-        'Patient program already has an active schedule assignment. Use migrate to change it.',
-      );
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const active = await tx.patientScheduleAssignment.findFirst({
+          where: { patientProgramId, endedAt: null },
+        });
+        if (active) {
+          throw new BadRequestException(
+            'Patient program already has an active schedule assignment. Use migrate to change it.',
+          );
+        }
+
+        return tx.patientScheduleAssignment.create({
+          data: {
+            patientProgramId,
+            scheduleVersionId: dto.scheduleVersionId,
+            assignedBy: user.userId,
+          },
+          include: this.assignmentInclude,
+        });
+      });
+    } catch (error) {
+      this.rethrowAssignmentConflict(error);
     }
-
-    return this.prisma.patientScheduleAssignment.create({
-      data: {
-        patientProgramId,
-        scheduleVersionId: dto.scheduleVersionId,
-        assignedBy: user.userId,
-      },
-      include: this.assignmentInclude,
-    });
   }
 
   async listAssignments(patientProgramId: string, user: AuthUser) {
@@ -356,43 +396,54 @@ export class TenantScheduleService {
       patientProgramId,
       user,
     );
-    await this.getTenantScopedPatientProgram(patientProgramId, effectiveTenantId);
-    await this.assertAssignableVersion(effectiveTenantId, dto.scheduleVersionId);
+    const patientProgram = await this.getTenantScopedPatientProgram(
+      patientProgramId,
+      effectiveTenantId,
+    );
+    await this.assertAssignableVersion(
+      effectiveTenantId,
+      dto.scheduleVersionId,
+      patientProgram.programId,
+    );
 
-    return this.prisma.$transaction(async (tx) => {
-      const active = await tx.patientScheduleAssignment.findFirst({
-        where: { patientProgramId, endedAt: null },
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const active = await tx.patientScheduleAssignment.findFirst({
+          where: { patientProgramId, endedAt: null },
+        });
+
+        if (!active) {
+          throw new BadRequestException(
+            'No active schedule assignment to migrate. Use assign instead.',
+          );
+        }
+
+        if (active.scheduleVersionId === dto.scheduleVersionId) {
+          throw new BadRequestException(
+            'Patient program is already assigned to this schedule version',
+          );
+        }
+
+        const endedAt = new Date();
+
+        await tx.patientScheduleAssignment.update({
+          where: { id: active.id },
+          data: { endedAt },
+        });
+
+        return tx.patientScheduleAssignment.create({
+          data: {
+            patientProgramId,
+            scheduleVersionId: dto.scheduleVersionId,
+            assignedBy: user.userId,
+            assignedAt: endedAt,
+          },
+          include: this.assignmentInclude,
+        });
       });
-
-      if (!active) {
-        throw new BadRequestException(
-          'No active schedule assignment to migrate. Use assign instead.',
-        );
-      }
-
-      if (active.scheduleVersionId === dto.scheduleVersionId) {
-        throw new BadRequestException(
-          'Patient program is already assigned to this schedule version',
-        );
-      }
-
-      const endedAt = new Date();
-
-      await tx.patientScheduleAssignment.update({
-        where: { id: active.id },
-        data: { endedAt },
-      });
-
-      return tx.patientScheduleAssignment.create({
-        data: {
-          patientProgramId,
-          scheduleVersionId: dto.scheduleVersionId,
-          assignedBy: user.userId,
-          assignedAt: endedAt,
-        },
-        include: this.assignmentInclude,
-      });
-    });
+    } catch (error) {
+      this.rethrowAssignmentConflict(error);
+    }
   }
 
   private async resolvePatientProgramTenant(

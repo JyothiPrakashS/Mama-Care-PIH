@@ -368,6 +368,11 @@ model PatientScheduleAssignment {
 
   overrides PatientActivityOverride[]
 
+  // One active assignment per PatientProgram (endedAt IS NULL) is enforced by a
+  // PostgreSQL partial unique index in migration
+  // add_one_active_patient_schedule_assignment. Prisma cannot express
+  // UNIQUE(patientProgramId) WHERE endedAt IS NULL in the schema; do not replace
+  // it with @@unique([patientProgramId, endedAt]).
   @@index([patientProgramId, endedAt])
   @@index([scheduleVersionId])
   @@index([assignedBy])

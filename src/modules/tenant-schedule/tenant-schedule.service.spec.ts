@@ -2,8 +2,30 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { ScheduleVersionStatus } from '@prisma/client';
+import { Prisma, ScheduleVersionStatus } from '@prisma/client';
 import { TenantScheduleService } from './tenant-schedule.service';
+
+const PIH_CARE_PROGRAM_ID = 'cp-pih';
+const NORMAL_PREGNANCY_PROGRAM_ID = 'cp-normal';
+
+function uniqueConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: ['patientProgramId'] },
+  });
+}
+
+function publishedVersion(
+  id: string,
+  careProgramId: string = PIH_CARE_PROGRAM_ID,
+) {
+  return {
+    id,
+    status: ScheduleVersionStatus.PUBLISHED,
+    template: { careProgramId },
+  };
+}
 
 describe('TenantScheduleService', () => {
   let service: TenantScheduleService;
@@ -157,8 +179,9 @@ describe('TenantScheduleService', () => {
   describe('patient assignment', () => {
     const patientProgram = {
       id: 'pp1',
+      programId: PIH_CARE_PROGRAM_ID,
       patient: { id: 'p1', tenantId: 'tenant-a', isDeleted: false },
-      program: { id: 'cp1', code: 'PIH_CARE', name: 'PIH' },
+      program: { id: PIH_CARE_PROGRAM_ID, code: 'PIH_CARE', name: 'PIH' },
     };
 
     beforeEach(() => {
@@ -166,10 +189,9 @@ describe('TenantScheduleService', () => {
     });
 
     it('assigns adopted PUBLISHED version', async () => {
-      prisma.scheduleVersion.findUnique.mockResolvedValue({
-        id: 'v1',
-        status: ScheduleVersionStatus.PUBLISHED,
-      });
+      prisma.scheduleVersion.findUnique.mockResolvedValue(
+        publishedVersion('v1'),
+      );
       prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
         id: 'adopt-1',
         endedAt: null,
@@ -189,13 +211,55 @@ describe('TenantScheduleService', () => {
           adminA,
         ),
       ).resolves.toMatchObject({ scheduleVersionId: 'v1' });
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('assigns PIH PatientProgram to a PIH ScheduleVersion', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(
+        publishedVersion('v-pih', PIH_CARE_PROGRAM_ID),
+      );
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-pih',
+        endedAt: null,
+      });
+      prisma.patientScheduleAssignment.findFirst.mockResolvedValue(null);
+      prisma.patientScheduleAssignment.create.mockResolvedValue({
+        id: 'asg-pih',
+        patientProgramId: 'pp1',
+        scheduleVersionId: 'v-pih',
+        endedAt: null,
+      });
+
+      await expect(
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v-pih' },
+          adminA,
+        ),
+      ).resolves.toMatchObject({ scheduleVersionId: 'v-pih' });
+    });
+
+    it('rejects PIH PatientProgram assigned to a NORMAL_PREGNANCY ScheduleVersion', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(
+        publishedVersion('v-normal', NORMAL_PREGNANCY_PROGRAM_ID),
+      );
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-normal',
+        endedAt: null,
+      });
+
+      await expect(
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v-normal' },
+          adminA,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.patientScheduleAssignment.create).not.toHaveBeenCalled();
     });
 
     it('rejects non-adopted version', async () => {
-      prisma.scheduleVersion.findUnique.mockResolvedValue({
-        id: 'v1',
-        status: ScheduleVersionStatus.PUBLISHED,
-      });
+      prisma.scheduleVersion.findUnique.mockResolvedValue(publishedVersion('v1'));
       prisma.tenantScheduleAdoption.findFirst.mockResolvedValue(null);
 
       await expect(
@@ -253,10 +317,7 @@ describe('TenantScheduleService', () => {
     });
 
     it('enforces one active assignment', async () => {
-      prisma.scheduleVersion.findUnique.mockResolvedValue({
-        id: 'v1',
-        status: ScheduleVersionStatus.PUBLISHED,
-      });
+      prisma.scheduleVersion.findUnique.mockResolvedValue(publishedVersion('v1'));
       prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
         id: 'adopt-1',
       });
@@ -274,6 +335,120 @@ describe('TenantScheduleService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('rejects a second sequential assignment without migration', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(publishedVersion('v1'));
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-1',
+      });
+      prisma.patientScheduleAssignment.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'asg-1', endedAt: null });
+      prisma.patientScheduleAssignment.create.mockResolvedValue({
+        id: 'asg-1',
+        patientProgramId: 'pp1',
+        scheduleVersionId: 'v1',
+        endedAt: null,
+      });
+
+      await expect(
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v1' },
+          adminA,
+        ),
+      ).resolves.toMatchObject({ scheduleVersionId: 'v1' });
+
+      await expect(
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v1' },
+          adminA,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.patientScheduleAssignment.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a new active assignment when only historical ended assignments exist', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(publishedVersion('v2'));
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-2',
+      });
+      prisma.patientScheduleAssignment.findFirst.mockResolvedValue(null);
+      prisma.patientScheduleAssignment.create.mockResolvedValue({
+        id: 'asg-2',
+        patientProgramId: 'pp1',
+        scheduleVersionId: 'v2',
+        endedAt: null,
+      });
+
+      await expect(
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v2' },
+          adminA,
+        ),
+      ).resolves.toMatchObject({ scheduleVersionId: 'v2', endedAt: null });
+      expect(prisma.patientScheduleAssignment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { patientProgramId: 'pp1', endedAt: null },
+        }),
+      );
+    });
+
+    it('concurrent assignment attempts cannot result in two active rows', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(publishedVersion('v1'));
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-1',
+      });
+      prisma.patientScheduleAssignment.findFirst.mockResolvedValue(null);
+
+      let createCalls = 0;
+      prisma.patientScheduleAssignment.create.mockImplementation(
+        async (args: { data: { scheduleVersionId: string } }) => {
+          createCalls += 1;
+          if (createCalls > 1) {
+            throw uniqueConflictError();
+          }
+          return {
+            id: 'asg-1',
+            patientProgramId: 'pp1',
+            scheduleVersionId: args.data.scheduleVersionId,
+            endedAt: null,
+          };
+        },
+      );
+
+      const results = await Promise.allSettled([
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v1' },
+          adminA,
+        ),
+        service.assignToPatientProgram(
+          'pp1',
+          { scheduleVersionId: 'v1' },
+          adminA,
+        ),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]).toMatchObject({
+        status: 'rejected',
+        reason: expect.any(BadRequestException),
+      });
+      expect(createCalls).toBe(2);
+      expect(
+        fulfilled.filter(
+          (r) =>
+            r.status === 'fulfilled' && r.value.endedAt == null,
+        ),
+      ).toHaveLength(1);
+    });
+
     it('rejects unauthorized roles', async () => {
       await expect(
         service.assignToPatientProgram(
@@ -288,16 +463,16 @@ describe('TenantScheduleService', () => {
   describe('assignment migration', () => {
     const patientProgram = {
       id: 'pp1',
+      programId: PIH_CARE_PROGRAM_ID,
       patient: { id: 'p1', tenantId: 'tenant-a', isDeleted: false },
-      program: { id: 'cp1', code: 'PIH_CARE', name: 'PIH' },
+      program: { id: PIH_CARE_PROGRAM_ID, code: 'PIH_CARE', name: 'PIH' },
     };
 
     beforeEach(() => {
       prisma.patientProgram.findUnique.mockResolvedValue(patientProgram);
-      prisma.scheduleVersion.findUnique.mockResolvedValue({
-        id: 'v2',
-        status: ScheduleVersionStatus.PUBLISHED,
-      });
+      prisma.scheduleVersion.findUnique.mockResolvedValue(
+        publishedVersion('v2'),
+      );
       prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
         id: 'adopt-2',
       });
@@ -401,6 +576,53 @@ describe('TenantScheduleService', () => {
           adminA,
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects migration from a PIH version to a NORMAL_PREGNANCY version', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(
+        publishedVersion('v-normal', NORMAL_PREGNANCY_PROGRAM_ID),
+      );
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-normal',
+      });
+      prisma.patientScheduleAssignment.findFirst.mockResolvedValue({
+        id: 'asg-1',
+        scheduleVersionId: 'v-pih',
+        endedAt: null,
+      });
+
+      await expect(
+        service.migrateAssignment(
+          'pp1',
+          { scheduleVersionId: 'v-normal' },
+          adminA,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('leaves the current assignment unchanged when care program migration is rejected', async () => {
+      prisma.scheduleVersion.findUnique.mockResolvedValue(
+        publishedVersion('v-normal', NORMAL_PREGNANCY_PROGRAM_ID),
+      );
+      prisma.tenantScheduleAdoption.findFirst.mockResolvedValue({
+        id: 'adopt-normal',
+      });
+      prisma.patientScheduleAssignment.findFirst.mockResolvedValue({
+        id: 'asg-1',
+        scheduleVersionId: 'v-pih',
+        endedAt: null,
+      });
+
+      await expect(
+        service.migrateAssignment(
+          'pp1',
+          { scheduleVersionId: 'v-normal' },
+          adminA,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(prisma.patientScheduleAssignment.update).not.toHaveBeenCalled();
+      expect(prisma.patientScheduleAssignment.create).not.toHaveBeenCalled();
     });
   });
 
