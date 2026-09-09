@@ -13,6 +13,7 @@ import { CareProgramModule } from './modules/care-program/care-program.module';
 import { ActivityModule } from './modules/activity/activity.module';
 import { ContentModule } from './modules/content/content.module';
 import { ScheduleModule } from './modules/schedule/schedule.module';
+import { TenantScheduleModule } from './modules/tenant-schedule/tenant-schedule.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ScheduleModule } from './modules/schedule/schedule.module';
     ActivityModule,
     ContentModule,
     ScheduleModule,
+    TenantScheduleModule,
   ],
   controllers: [AppController],
   providers: [AppService],
