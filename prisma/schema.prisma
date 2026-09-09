@@ -66,6 +66,7 @@ model Tenant {
   users          User[]
   patients       Patient[]
   doctorPatients DoctorPatient[]
+  scheduleAdoptions TenantScheduleAdoption[]
 }
 
 model User {
@@ -88,6 +89,7 @@ model User {
 
   scheduleAssignmentsAssigned PatientScheduleAssignment[] @relation("ScheduleAssignmentAssignedBy")
   activityOverridesCreated    PatientActivityOverride[]   @relation("ActivityOverrideCreatedBy")
+  scheduleAdoptionsAdopted    TenantScheduleAdoption[]    @relation("ScheduleAdoptionAdoptedBy")
 }
 
 model Patient {
@@ -279,6 +281,7 @@ model ScheduleVersion {
 
   rules       ScheduleRule[]
   assignments PatientScheduleAssignment[]
+  tenantAdoptions TenantScheduleAdoption[]
 
   @@unique([templateId, versionNumber])
   @@index([templateId, status])
@@ -321,6 +324,30 @@ model ScheduleRuleItem {
   @@index([activityId])
 }
 
+model TenantScheduleAdoption {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  scheduleVersionId String
+  scheduleVersion   ScheduleVersion @relation(fields: [scheduleVersionId], references: [id])
+
+  adoptedAt DateTime @default(now())
+  adoptedBy String
+  adoptedByUser User @relation("ScheduleAdoptionAdoptedBy", fields: [adoptedBy], references: [id])
+
+  endedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, scheduleVersionId])
+  @@index([tenantId, endedAt])
+  @@index([scheduleVersionId])
+  @@index([adoptedBy])
+}
+
 model PatientScheduleAssignment {
   id String @id @default(uuid())
 
@@ -341,6 +368,11 @@ model PatientScheduleAssignment {
 
   overrides PatientActivityOverride[]
 
+  // One active assignment per PatientProgram (endedAt IS NULL) is enforced by a
+  // PostgreSQL partial unique index in migration
+  // add_one_active_patient_schedule_assignment. Prisma cannot express
+  // UNIQUE(patientProgramId) WHERE endedAt IS NULL in the schema; do not replace
+  // it with @@unique([patientProgramId, endedAt]).
   @@index([patientProgramId, endedAt])
   @@index([scheduleVersionId])
   @@index([assignedBy])
